@@ -5,7 +5,7 @@ import time
 import math
 
 # Constantes
-WIDTH, HEIGHT = 600, 600
+WIDTH, HEIGHT = 500, 500
 ROWS, COLS = 6, 6
 SQUARE_SIZE = WIDTH // COLS
 
@@ -16,7 +16,8 @@ BLUE = (0, 0, 255)
 RED = (255, 0, 0)
 GREEN = (0, 255, 0)
 HIGHLIGHT = (255, 255, 0)
-CROWN_COLOR = (255, 215, 0)  # Cor dourada para a coroa
+CROWN_COLOR = (255, 215, 0)
+GOLD = (212, 175, 55)
 
 pygame.init()
 WIN = pygame.display.set_mode((WIDTH, HEIGHT))
@@ -25,9 +26,9 @@ FONT = pygame.font.SysFont('Arial', 32)
 SMALL_FONT = pygame.font.SysFont('Arial', 24)
 
 class Piece:
-    PADDING = 15
-    OUTLINE = 2
-    ANIMATION_SPEED = 10  # Velocidade da animação
+    PADDING = 10
+    OUTLINE = 3
+    ANIMATION_SPEED = 9  # Velocidade da animação
 
     def __init__(self, row, col, color):
         self.row = row
@@ -219,9 +220,35 @@ class Board:
 
         # Verifica se há capturas obrigatórias
         must_capture = any(skipped for skipped in moves.values() if skipped)
+        
         if must_capture:
+            # Filtra apenas os movimentos de captura
             moves = {move: skipped for move, skipped in moves.items() if skipped}
-
+            
+            # Agora vamos verificar se há capturas múltiplas
+            final_moves = {}
+            for move, skipped in moves.items():
+                # Simula o movimento para ver se há mais capturas disponíveis
+                temp_board = copy.deepcopy(self)
+                temp_piece = temp_board.get_piece(piece.row, piece.col)
+                temp_board.move(temp_piece, move[0], move[1])
+                temp_board.remove(skipped)
+                
+                # Verifica se há mais capturas disponíveis após este movimento
+                new_moves = temp_board.get_valid_moves(temp_board.get_piece(move[0], move[1]))
+                has_more_captures = any(skipped for skipped in new_moves.values() if skipped)
+                
+                if not has_more_captures:
+                    final_moves[move] = skipped
+                else:
+                    # Se houver mais capturas, não adiciona este movimento
+                    # Em vez disso, adiciona apenas os movimentos finais da cadeia
+                    for new_move, new_skipped in new_moves.items():
+                        if new_skipped:  # É uma captura
+                            final_moves[new_move] = skipped + new_skipped
+            
+            return final_moves if final_moves else moves
+        
         return moves
 
     def get_all_valid_moves(self, color):
@@ -426,6 +453,7 @@ class Game:
             self.selected = piece
             self.valid_moves = self.board.get_valid_moves(piece)
             
+            # Se houver capturas obrigatórias, mostra apenas elas
             if self.board.has_capture_moves(self.turn):
                 self.valid_moves = {move: skipped for move, skipped in self.valid_moves.items() if skipped}
                 
@@ -439,6 +467,7 @@ class Game:
             skipped = self.valid_moves[(row, col)]
             if skipped:
                 self.board.remove(skipped)
+                
                 # Verificar se há mais capturas disponíveis
                 self.valid_moves = self.board.get_valid_moves(self.board.get_piece(row, col))
                 if any(skipped for skipped in self.valid_moves.values()):
@@ -460,8 +489,8 @@ class Game:
         
         if len(self.board.get_all_valid_moves(self.turn)) == 0:
             winner = BLACK if self.turn == WHITE else WHITE
-            text = "Jogo travado! Vencedor: " + ("Branco" if winner == WHITE else "Preto")
-            draw_winner(self.win, text)
+            player = "BRANCAS" if winner == WHITE else "PRETAS"
+            draw_game_over(self.win, f"VITÓRIA DAS {player}!")
             self.reset()
 
     def ai_move(self, board):
@@ -481,6 +510,63 @@ def get_row_col_from_mouse(pos):
     col = x // SQUARE_SIZE
     return row, col
 
+def check_draw_condition(board):
+    # Contar peças brancas e pretas
+    white_pieces = []
+    black_pieces = []
+    
+    for row in board.board:
+        for piece in row:
+            if piece != 0:
+                if piece.color == WHITE:
+                    white_pieces.append(piece)
+                else:
+                    black_pieces.append(piece)
+    
+    # Verificar condições de empate
+    if (len(white_pieces) == 1 and len(black_pieces) == 1 and
+        white_pieces[0].king and black_pieces[0].king):
+        return True
+    return False
+
+def draw_game_over(win, message):
+    # Cria uma superfície semi-transparente
+    overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+    overlay.fill((0, 0, 0, 180))  # Preto com transparência
+    
+    # Desenha o overlay
+    win.blit(overlay, (0, 0))
+    
+    # Cria um retângulo central para a mensagem
+    rect_width, rect_height = WIDTH - 100, HEIGHT // 3
+    rect_x, rect_y = 50, (HEIGHT - rect_height) // 2
+    pygame.draw.rect(win, (50, 50, 50), (rect_x, rect_y, rect_width, rect_height))
+    pygame.draw.rect(win, GOLD, (rect_x, rect_y, rect_width, rect_height), 4)  # Borda dourada
+    
+    # Renderiza o texto principal
+    font_large = pygame.font.SysFont('Arial', 21, bold=True)
+    text_main = font_large.render(message, True, WHITE)
+    text_rect = text_main.get_rect(center=(WIDTH//2, HEIGHT//2 - 20))
+    win.blit(text_main, text_rect)
+    
+    # Texto secundário
+    font_small = pygame.font.SysFont('Arial', 24)
+    text_secondary = font_small.render("Clique para continuar", True, WHITE)
+    text_sec_rect = text_secondary.get_rect(center=(WIDTH//2, HEIGHT//2 + 40))
+    win.blit(text_secondary, text_sec_rect)
+    
+    pygame.display.update()
+    
+    # Espera pelo clique do mouse ou tecla
+    waiting = True
+    while waiting:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if event.type == pygame.MOUSEBUTTONDOWN or event.type == pygame.KEYDOWN:
+                waiting = False
+        
 def main():
     run = True
     clock = pygame.time.Clock()
@@ -493,9 +579,14 @@ def main():
         if game.is_animating():
             game.update()
             continue
+        
+        if check_draw_condition(game.board):
+            draw_winner(WIN, "Empate! Duas damas restantes")
+            game.reset()
+            continue
 
         if game.turn == BLACK and not game.waiting_for_animation:
-            _, new_board = minimax(game.board, 3, float('-inf'), float('inf'), False, game)
+            _, new_board = minimax(game.board, 6, float('-inf'), float('inf'), False, game)
             game.ai_move(new_board)
 
         winner = game.board.winner()
@@ -503,6 +594,7 @@ def main():
             text = "Vencedor: " + ("Branco" if winner == WHITE else "Preto")
             draw_winner(WIN, text)
             game.reset()
+        
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
