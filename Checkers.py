@@ -27,7 +27,7 @@ SMALL_FONT = pygame.font.SysFont('Arial', 24)
 
 class Piece:
     PADDING = 10
-    OUTLINE = 3
+    OUTLINE = 5
     ANIMATION_SPEED = 9  # Velocidade da animação
 
     def __init__(self, row, col, color):
@@ -107,11 +107,32 @@ class Board:
                 pygame.draw.rect(win, WHITE, (col * SQUARE_SIZE, row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE))
 
     def evaluate(self):
-        white_score = self.white_left + (self.white_kings * 1.5)
-        black_score = self.black_left + (self.black_kings * 1.5)
+        white_score = 0
+        black_score = 0
+
+        for row in range(ROWS):
+            for col in range(COLS):
+                piece = self.board[row][col]
+                if piece != 0:
+                    value = 1.5 if piece.king else 1
+
+                    center_bonus = 0.3 if 2 <= row <= 5 and 2 <= col <= 5 else 0
+
+                    progress_bonus = (row / 7) * 0.2 if piece.color == WHITE else ((7 - row) / 7) * 0.2
+
+                    total = value + center_bonus + progress_bonus
+
+                    if piece.color == WHITE:
+                        white_score += total
+                    else:
+                        black_score += total
+
+        
         white_moves = len(self.get_all_valid_moves(WHITE))
         black_moves = len(self.get_all_valid_moves(BLACK))
-        return (white_score - black_score) + (white_moves - black_moves) * 0.1
+        mobility_score = (white_moves - black_moves) * 0.1
+
+        return white_score - black_score + mobility_score
 
     def get_all_pieces(self, color):
         pieces = []
@@ -580,13 +601,8 @@ def main():
             game.update()
             continue
         
-        if check_draw_condition(game.board):
-            draw_winner(WIN, "Empate! Duas damas restantes")
-            game.reset()
-            continue
-
         if game.turn == BLACK and not game.waiting_for_animation:
-            _, new_board = minimax(game.board, 6, float('-inf'), float('inf'), False, game)
+            _, new_board = minimax(game.board, 7, float('-inf'), float('inf'), False, game)
             game.ai_move(new_board)
 
         winner = game.board.winner()
